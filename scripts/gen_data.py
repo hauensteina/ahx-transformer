@@ -38,7 +38,7 @@ def usage():
 def main():
     parser = argparse.ArgumentParser(usage=usage())
     parser.add_argument('outfile', type=str)
-    parser.add_argument('--problem', type=str, required=True)
+    parser.add_argument('--problem', type=str, required=True, choices=['double_a', 'copy'])
     parser.add_argument('--num_samples', type=int, required=True)
     parser.add_argument('--max_len', type=int, required=True)
     args = parser.parse_args()

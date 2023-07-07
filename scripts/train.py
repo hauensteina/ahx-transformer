@@ -2,17 +2,20 @@ from pdb import set_trace as BP
 import argparse
 import os
 import re
+import uuid
+import boto3
 import torch
 from torch import tensor
 import torch.nn as nn
 import torch.nn.functional as F
 from transformer import TransformerModel
 from tokenizer import Tokenizer
+from helpers import save_model, load_model
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-MODEL_DIR = 'models'
+CHECKPOINT_DIR = '../models'
 if 'SM_MODEL_DIR' in os.environ:
-    MODEL_DIR = os.environ['SM_MODEL_DIR']
+    CHECKPOINT_DIR = os.environ['SM_MODEL_DIR']
 
 def usage():
     name = os.path.basename(__file__)
@@ -21,29 +24,39 @@ def usage():
       {name}: Train a transformer to rewrite character sequences
 
     Synopsis:
-      {name} [--block_sz <int>] [--embed_sz <int>] [--batch_sz <int>] [--num_layers <int>] [--num_heads <int>] [--dropout <float>] 
-      [--learning_rate <float>] [--eval_interval <int>] [--num_epochs <int>] --infile <str>
+      {name} [--problem <str>] 
+      [--block_sz <int>] [--embed_sz <int>] [--batch_sz <int>] [--num_layers <int>] [--num_heads <int>] [--dropout <float>] 
+      [--learning_rate <float>] [--eval_interval <int>] [--num_epochs <int>]  [--min_loss <int>] 
+      [--model_in <file_path>] [--model_out <file_path>] --infile <str>
 
     Description:
         Train a transformer to rewrite character sequences. 
-        The input file should contain one input output pair per line.  Lines can be commented with #.
+
+        --problem specifies which problem we're looking at.  One of 'copy', 'double_a'.
+        This is just used to check test cases. The model is not aware of the problem.
+
+        Training can run locally, or on sagemaker (see sagemaker_train.py).
+        The input file must contain one input output pair per line.  Lines can be commented with #.
         For example, the following is a valid input file:
 
         # Minimal training data to get off the ground
         AB,AAB
         ABCAB,AABCAAB
         AB,AAB
-        ABCAB,AABCAAB
-        AB,AAB
-        ABCAB,AABCAAB
 
-        The model will be loaded from a numbered checkpoint file if it exists.  
-        Files <infile>_0001.pt, <infile>_0002.pt, etc. will be used to load and save the model.
+        The model will be loaded from the file specified by --model_in. The file can be local or on S3.
+        If --model_in is not given, the latest snapshot is loaded (if running locally).
+        Snapshots <infile>_0001.pt, <infile>_0002.pt will be written locally to the models subfolder.
+        Snapshots are written every --eval_interval epochs.
+        Training ends after --num_epochs, or earlier if the validation loss is less than --min_loss.
+        The final model will be written to --model_out.
 
-        Training data are taken from <infile>_train.txt, validation data from <infile>_val.txt.  
+        Training data are taken from ../data if running locally, or from environ['SM_CHANNEL_TRAIN'] if running on SageMaker.
+        The data files must be named <infile>_train.txt and <infile>_val.txt.  
 
-    Example:
-      python {name} --block_sz 32 --embed_sz 16 --batch_sz 64 --num_layers 1 --num_heads 2 --num_epochs 2 --infile samples_cp_small
+    Examples:
+      python {name} --problem copy --block_sz 32 --embed_sz 32 --batch_sz 32 --num_layers 1 --num_heads 2 --num_epochs 10 --learning_rate 3e-3 --infile samples_cp_small
+      python {name} --problem copy --block_sz 32 --embed_sz 32 --batch_sz 32 --num_layers 1 --num_heads 2 --num_epochs 10 --learning_rate 3e-3 --infile samples_cp_small --model_out s3://my-bucket/my-model.pt
 
     '''
     msg += '\n '
@@ -51,54 +64,66 @@ def usage():
 
 # -------------
 
-
 def main():
     torch.manual_seed(1337)
     parser = argparse.ArgumentParser(usage=usage())
     parser.add_argument('--infile', type=str, required=True)
+    parser.add_argument('--problem', type=str, required=True, choices=['double_a', 'copy'])
     parser.add_argument('--block_sz', type=int, default=32)
-    parser.add_argument('--embed_sz', type=int, default=16)
-    parser.add_argument('--batch_sz', type=int, default=64)
+    parser.add_argument('--embed_sz', type=int, default=32)
+    parser.add_argument('--batch_sz', type=int, default=32)
     parser.add_argument('--num_layers', type=int, default=1)
     parser.add_argument('--num_heads', type=int, default=2)
-    parser.add_argument('--dropout', type=float, default=0.2)
+    parser.add_argument('--dropout', type=float, default=0.0)
     parser.add_argument('--learning_rate', type=float, default=3e-4)
     parser.add_argument('--eval_interval', type=int, default=1)
-    parser.add_argument('--num_epochs', type=int, default=1000)
+    parser.add_argument('--num_epochs', type=int, default=2)
+    parser.add_argument('--min_loss', type=float, default=0.04)
+    parser.add_argument('--model_in', type=str)
+    parser.add_argument('--model_out', type=str)
     args = parser.parse_args()
     args = args.__dict__
     if 'SM_CHANNEL_TRAIN' in os.environ:
         args['infile'] = os.path.join( os.environ['SM_CHANNEL_TRAIN'], args['infile'])
     else:
-        args['infile'] = os.path.join( 'data', args['infile'])
+        args['infile'] = os.path.join( '../data', args['infile'])
     model = run(**args)
 
-def run(block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
-        learning_rate, eval_interval, num_epochs, infile):
+def run(problem, block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
+        learning_rate, eval_interval, num_epochs, min_loss, model_in, model_out, infile):
     
-    checkpoint_base = os.path.join(MODEL_DIR, os.path.split(infile)[-1])
-    # Read all data into memory    
-    train_data, val_data = read_data(infile)
-
-    # Build or load model
-    if not newest_checkpoint(checkpoint_base): # new model
+    def fresh_model():
         print(f'>>>> Fresh model')
         tok = Tokenizer(train_data)
         model = TransformerModel( DEVICE, tok, embed_sz, num_layers,
                                 num_heads, block_sz, dropout)
         m = model.to(DEVICE)
         m.add_optimizer(learning_rate)
-    else: # load from file
-        tok = Tokenizer([])
-        checkpoint_file = newest_checkpoint(checkpoint_base)
-        print(f'>>>> Loading model from {checkpoint_file}')
-        m = TransformerModel.load( DEVICE, tok, checkpoint_file)
+        return m
 
     print(f'>>>> Using device {DEVICE}')
-    #m = model.to(DEVICE)
+    checkpoint_base = os.path.join(CHECKPOINT_DIR, os.path.split(infile)[-1])
+    # Read all data into memory    
+    train_data, val_data = read_data(infile)
 
+    # Build or load model
+    if model_in:
+        try:
+            print(f'>>>> Loading model from {model_in}')
+            m = load_model( TransformerModel, DEVICE, model_in)
+        except:
+            print(f'>>>> Failed to load model from {model_in}. Using a fresh model instead')
+            m = fresh_model()
+    elif newest_checkpoint(checkpoint_base): 
+        print(f'>>>> Loading model from {checkpoint_file}')
+        checkpoint_file = newest_checkpoint(checkpoint_base)
+        m = load_model( TransformerModel, DEVICE, checkpoint_file)
+    else:
+        m= fresh_model()
+
+    tok = m.tokenizer
     train_data = [ tok.encode(x) for x in train_data ]
-    val_data = [ tok.encode(x) for x in val_data]
+    val_data = [ tok.encode(x) for x in val_data ]
     print('A tokenized training sample:')
     print(train_data[0])
 
@@ -109,39 +134,48 @@ def run(block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
     print(f'Initial loss: {loss}')
     print(f'Generate something: {generate(m, tok, "{A,")}')
 
+    train(m, problem, num_epochs, min_loss, eval_interval, train_data, val_data, batch_sz, block_sz,
+            checkpoint_base, model_out)
+
+
+def train(model, problem, num_epochs, min_loss, eval_interval, train_data, val_data, batch_sz, block_sz,
+          checkpoint_base, model_out):
     print('\n>>>> Start training')
     batches_per_epoch = len(train_data) // batch_sz
-
-    # Train 
+    tok = model.tokenizer
     for epoch_num in range(num_epochs):
-
         if epoch_num % eval_interval == 0:
-
             # Log the loss and run test cases
-            if epoch_num: testcases(m, tok, val_data, infile)
-            losses = estimate_loss(m, tok, train_data, val_data, batch_sz, block_sz)
+            losses = estimate_loss(model, tok, train_data, val_data, batch_sz, block_sz)
             print( f"\nBefore epoch {epoch_num}: train loss {losses[0]:.4f}, val loss {losses[1]:.4f}")
             print('First x,y in batch:')
+            xb, yb = get_batch(tok, train_data, batch_sz, block_sz)
             print(tok.decode(xb[0].tolist()))
             print(tok.decode(yb[0].tolist()))
+            testcases(model, problem, val_data)
 
             # Save model checkpoint
             fname = next_checkpoint(checkpoint_base)
-            print(f'Saving model to {fname}')
-            m.save(fname)
+            print(f'Saving model checkpoint to {fname}')
+            model.save(fname)
+
+            if losses[1] < min_loss:
+                print(f'>>>> Validation loss {losses[1]:.4f} is less than {min_loss}. Stopping.')
+                break
 
         for batch_num in range(batches_per_epoch):
             xb, yb = get_batch(tok, train_data, batch_sz, block_sz)
-            logits, loss = m(xb, yb)
-            m.optimizer.zero_grad(set_to_none=True)
+            logits, loss = model(xb, yb)
+            model.optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            m.optimizer.step()
+            model.optimizer.step()
 
+    if model_out: save_model(model, model_out)
 
 def read_data(fname):
     """
     Read training and validation data, from two different files.
-    Lines are comma separated input output pairs.  Lines can be commented with #.
+    Lines are comma separated input output pairs. Lines can be commented with #.
     Strip and enclose each line in curly braces.
     """
     trainfname = fname + '_train.txt'
@@ -159,6 +193,7 @@ def read_data(fname):
 
 def get_batch(tok, samps, batch_sz, block_sz):
     """
+    Get one batch of training data.
     The output is the input shifted by one character.
     Output chars to the left of comma are replaced with 0.
     The rightmost output token looks one step into the future.
@@ -197,7 +232,7 @@ def get_batch(tok, samps, batch_sz, block_sz):
 def estimate_loss(m, tok, train_data, val_data, batch_sz, block_sz):
     """ Runs a few batches through the model and returns the average train and val loss"""
     n_batches = 100
-    losses = [0.0, 0.0]
+    tv_losses = [0.0, 0.0]
     m.eval()
     for split, samps in enumerate([train_data, val_data]):
         losses = torch.zeros(n_batches)
@@ -205,17 +240,20 @@ def estimate_loss(m, tok, train_data, val_data, batch_sz, block_sz):
             x, y = get_batch(tok, samps, batch_sz, block_sz)
             logits, loss = m(x, y)
             losses[k] = loss.item()
-        losses[split] = losses.mean()
+        tv_losses[split] = losses.mean()
     m.train()
-    return losses
+    return tv_losses
 
-def testcases(m, tok, val_data, infile):
-    if '_da_' in infile:
-        testcases_da(m, tok, val_data)
-    else:   
-        testcases_cp(m, tok, val_data)
+def testcases(m, problem, val_data):
+    if problem == 'copy':
+        testcases_cp(m, val_data)
+    elif problem == 'double_a':
+        testcases_da(m, val_data)
+    else:
+        raise ValueError(f'Unknown problem {problem}')
         
-def testcases_cp(m, tok, val_data):
+def testcases_cp(m, val_data):
+    tok = m.tokenizer
     print('>>>> Test cases:')
     sampsize = 10
     for s in val_data[:sampsize]:
@@ -227,7 +265,8 @@ def testcases_cp(m, tok, val_data):
             prefix = 'ERROR: '
         print(f'{prefix}Prompt -> Res: {prompt} -> {res}')
 
-def testcases_da(m, tok, val_data):
+def testcases_da(m, val_data):
+    tok = m.tokenizer
     print('>>>> Test cases:')
     sampsize = 10
     for s in val_data[:sampsize]:
@@ -235,7 +274,7 @@ def testcases_da(m, tok, val_data):
         res = m.generate(prompt, stoptoken=tok.encode('}'), max_new_tokens=20)
         parts = res.split(',')
         prefix = ''
-        if parts[0][1:] != re.sub('A', 'AA', parts[1][:-1]):
+        if parts[1][:-1] != re.sub('A', 'AA', parts[0][1:]):
             prefix = 'ERROR: '
         print(f'{prefix}Prompt -> Res: {prompt} -> {res}')
 
@@ -247,11 +286,11 @@ def generate(model, tok, prompt):
 
 def newest_checkpoint(checkpoint_base):
     """
-    Given a checkpoint file base name, find the most recent checkpoint file.
+    Find the most recent checkpoint file.
     """
     base = os.path.split(checkpoint_base)[-1]
     folder = os.path.split(checkpoint_base)[0]
-    files = os.listdir(MODEL_DIR)
+    files = os.listdir(CHECKPOINT_DIR)
     files = [f for f in files if f.startswith(base + '_')]
     files = [f for f in files if f.endswith('.pt')]
     if not files: return []
@@ -260,7 +299,7 @@ def newest_checkpoint(checkpoint_base):
 
 def next_checkpoint(checkpoint_base):
     """
-    Given a checkpoint file base name, find the latest checkpoint and increment by 1.
+    Build filename for next checkpoint.
     """
     latest = newest_checkpoint(checkpoint_base)
     if not latest: return checkpoint_base + '_0000.pt'
