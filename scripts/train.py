@@ -1,13 +1,7 @@
-from pdb import set_trace as BP
 import argparse
 import os
 import re
-import uuid
-import boto3
 import torch
-from torch import tensor
-import torch.nn as nn
-import torch.nn.functional as F
 from transformer import TransformerModel
 from tokenizer import Tokenizer
 from helpers import save_model, load_model
