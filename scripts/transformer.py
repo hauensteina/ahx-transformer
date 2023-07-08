@@ -3,7 +3,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch import tensor
 
-
 """
 Transformer as suggested in "Let's build GPT from scratch" by Andrej Karpathy.
 https://www.youtube.com/watch?v=kCc8FmEb1nY

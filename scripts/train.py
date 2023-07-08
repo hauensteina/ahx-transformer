@@ -4,7 +4,7 @@ import re
 import torch
 from transformer import TransformerModel
 from tokenizer import Tokenizer
-from helpers import save_model, load_model
+from helpers import save_model, load_model, read_lines
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 CHECKPOINT_DIR = '../models'
@@ -126,7 +126,7 @@ def run(problem, block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
     logits, loss = m(xb, yb)
     print(f'Output logits shape (batch_sz*block_sz, alphabet_sz): {logits.shape}')
     print(f'Initial loss: {loss}')
-    print(f'Generate something: {generate(m, tok, "{A,")}')
+    print(f'Generate something: {generate(m, "{A,")}')
 
     train(m, problem, num_epochs, min_loss, eval_interval, train_data, val_data, batch_sz, block_sz,
             checkpoint_base, model_out)
@@ -169,21 +169,17 @@ def train(model, problem, num_epochs, min_loss, eval_interval, train_data, val_d
 def read_data(fname):
     """
     Read training and validation data, from two different files.
-    Lines are comma separated input output pairs. Lines can be commented with #.
-    Strip and enclose each line in curly braces.
+    Enclose each line in curly braces.
     """
     trainfname = fname + '_train.txt'
     valfname = fname + '_val.txt'
-    sets = [[],[]]
+    trainval = [[],[]]
     for idx,fname in enumerate([trainfname, valfname]):  
-        with open(fname, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        lines = [l.strip() for l in lines]
-        lines = [
-            '{' + l + '}' for l in lines if len(l) > 0 and not l.startswith('#')]
+        lines = read_lines(fname)
+        lines = [ '{' + l + '}' for l in lines ]
         print(f'Number of samples in {fname}: ', len(lines))
-        sets[idx] = lines
-    return sets
+        trainval[idx] = lines
+    return trainval
 
 def get_batch(tok, samps, batch_sz, block_sz):
     """
@@ -272,7 +268,8 @@ def testcases_da(m, val_data):
             prefix = 'ERROR: '
         print(f'{prefix}Prompt -> Res: {prompt} -> {res}')
 
-def generate(model, tok, prompt):
+def generate(model, prompt):
+    tok = model.tokenizer
     out = model.generate(prompt,
             stoptoken=tok.encode('}'),
             max_new_tokens=20)
