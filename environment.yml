@@ -1,20 +1,52 @@
-name: conda_env
+name: ahx-transformer
 channels:
   - defaults
 dependencies:
+  - appnope=0.1.2
+  - asttokens=2.0.5
+  - backcall=0.2.0
   - bzip2=1.0.8
   - ca-certificates=2023.05.30
+  - comm=0.1.2
+  - debugpy=1.5.1
+  - decorator=5.1.1
+  - executing=0.8.3
+  - ipykernel=6.19.2
+  - ipython=8.12.0
+  - jedi=0.18.1
+  - jupyter_client=8.1.0
+  - jupyter_core=5.3.0
+  - libcxx=14.0.6
   - libffi=3.4.4
+  - libsodium=1.0.18
+  - matplotlib-inline=0.1.6
   - ncurses=6.4
+  - nest-asyncio=1.5.6
   - openssl=3.0.9
+  - parso=0.8.3
+  - pexpect=4.8.0
+  - pickleshare=0.7.5
   - pip=23.1.2
-  - python=3.10.12
+  - prompt-toolkit=3.0.36
+  - psutil=5.9.0
+  - ptyprocess=0.7.0
+  - pure_eval=0.2.2
+  - pygments=2.15.1
+  - python=3.11.4
+  - python-dateutil=2.8.2
+  - pyzmq=25.1.0
   - readline=8.2
   - setuptools=67.8.0
+  - six=1.16.0
   - sqlite=3.41.2
+  - stack_data=0.2.0
   - tk=8.6.12
+  - tornado=6.2
+  - traitlets=5.7.1
+  - wcwidth=0.2.5
   - wheel=0.38.4
   - xz=5.4.2
+  - zeromq=4.3.4
   - zlib=1.2.13
   - pip:
       - attrs==23.1.0
@@ -55,7 +87,6 @@ dependencies:
       - pycparser==2.21
       - pynacl==1.5.0
       - pyrsistent==0.19.3
-      - python-dateutil==2.8.2
       - python-dotenv==0.21.1
       - pytz==2023.3
       - pyyaml==6.0
@@ -63,7 +94,6 @@ dependencies:
       - s3transfer==0.6.1
       - sagemaker==2.169.0
       - schema==0.7.5
-      - six==1.16.0
       - smdebug-rulesconfig==1.0.1
       - sympy==1.12
       - tblib==1.7.0
@@ -75,4 +105,4 @@ dependencies:
       - urllib3==1.26.16
       - websocket-client==0.59.0
       - zipp==3.15.0
-prefix: /Users/ahauenst/miniconda3/envs/conda_env
+prefix: /Users/ahauenst/miniconda3/envs/ahx-transformer
