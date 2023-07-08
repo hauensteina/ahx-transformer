@@ -39,9 +39,9 @@ def usage():
         AB,AAB
 
         The model will be loaded from the file specified by --model_in. The file can be local or on S3.
-        If --model_in is not given, the latest snapshot is loaded (if running locally).
-        Snapshots <infile>_0001.pt, <infile>_0002.pt will be written locally to the models subfolder.
-        Snapshots are written every --eval_interval epochs.
+        If --model_in is not given, the latest checkpoint is loaded (if running locally).
+        Checkpoints <infile>_0001.pt, <infile>_0002.pt will be written to os.environ['SM_MODEL_DIR'] or to the models subfolder.
+        Checkpoints are written every --eval_interval epochs.
         Training ends after --num_epochs, or earlier if the validation loss is less than --min_loss.
         The final model will be written to --model_out.
 
@@ -109,8 +109,8 @@ def run(problem, block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
             print(f'>>>> Failed to load model from {model_in}. Using a fresh model instead')
             m = fresh_model()
     elif newest_checkpoint(checkpoint_base): 
-        print(f'>>>> Loading model from {checkpoint_file}')
         checkpoint_file = newest_checkpoint(checkpoint_base)
+        print(f'>>>> Loading model from {checkpoint_file}')
         m = load_model( TransformerModel, DEVICE, checkpoint_file)
     else:
         m= fresh_model()
