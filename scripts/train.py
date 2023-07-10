@@ -27,7 +27,7 @@ def usage():
         Train a transformer to rewrite character sequences. 
 
         --problem specifies which problem we're looking at.  One of 'copy', 'double_a'.
-        This is just used to check test cases. The model is not aware of the problem.
+        This is just exclusivelt to diplay some test cases. 
 
         Training can run locally, or on sagemaker (see sagemaker_train.py).
         The input file must contain one input output pair per line.  Lines can be commented with #.
@@ -240,7 +240,7 @@ def testcases(m, problem, val_data):
     elif problem == 'double_a':
         testcases_da(m, val_data)
     else:
-        raise ValueError(f'Unknown problem {problem}')
+        print('testcases():Unknown problem type. Skipping.')
         
 def testcases_cp(m, val_data):
     tok = m.tokenizer
