@@ -16,7 +16,7 @@ def usage():
       {name}: Evaluate a transformer model on a given dataset.
 
     Synopsis:
-      {name} --model <model.pt> --dataset <dataset.txt>
+      {name} --model_file <model.pt> --data_file <dataset.txt>
 
     Description:
         Runs the model on the dataset and prints loss and accuracy.
@@ -68,7 +68,8 @@ def run(model_file, data_file):
             print(f'>>>>   got:      {out}')
             print(f' ')
 
-    print( f'model:{model_file}, data:{data_file}, samples:{len(lines)}, errors:{n_errors}, error_rate:{100*n_errors/len(lines):.2f}' )
+    print( (f'model:{model_file}, data:{data_file}, samples:{len(lines)}, ' + 
+            f'errors:{n_errors}, error_rate:{100*n_errors/len(lines):.2f}' ))
 
 if __name__ == '__main__':
     main()
