@@ -113,7 +113,7 @@ def run(problem, block_sz, embed_sz, batch_sz, num_layers, num_heads, dropout,
         print(f'>>>> Loading model from {checkpoint_file}')
         m = load_model( TransformerModel, DEVICE, checkpoint_file)
     else:
-        m= fresh_model()
+        m = fresh_model()
 
     tok = m.tokenizer
     train_data = [ tok.encode(x) for x in train_data ]

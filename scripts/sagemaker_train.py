@@ -20,6 +20,7 @@ from sagemaker.pytorch import PyTorch
 # This should be called 'command_line_args_for_your_train_script' (train.py)
 hyperparameters = {
     'infile': 'samples_da', #'samples_cp',
+    'problem': 'double_a', #'copy',
     'block_sz': 32, # max context length
     'embed_sz': 32,
     'batch_sz': 32,
