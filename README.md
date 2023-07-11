@@ -40,7 +40,7 @@ Currently, two rewriting rules are implemented in `gen_data.py`:
 - double_a: The output is the input, with all letters A doubled
 
 Feel free to change the script to generate whatever you are interested in.
-The rest of the toolchain is agostic to the particular problem, except for the test cases
+The rest of the toolchain is agnostic to the particular problem, except for the test cases
 in `train.py`. You would have to add new test cases to `train.py` after you add your own rules.
 Otherwise, you just see the loss values.
 
@@ -170,7 +170,7 @@ using `sagemaker.py` is more convenient.
 
 ### Running with Sagemaker Studio
 
-If go to the Sagemaker home page, you should be able to choose your user at the top right and open Studio:
+If you go to the Sagemaker home page, you should be able to choose your user at the top right and open Studio:
 
 <img src='./screenshots/studio_user.png' width='400'>
 
