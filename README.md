@@ -115,7 +115,7 @@ The model path can be an S3 URL.
 AWS Sagemaker is an Amazon cloud service that lets you run training jobs on hardware of your choice. 
 You can choose whether you just want a CPU, or one or more GPUs. The machine will be set up on demand,
 and disappear when you are done. Billing is by the second and starts at around 50 cents an hour 
-for a machine with a GPU. The overhead for machine setup is about 5 minutes.
+for a machine with a GPU. The overhead for machine startup is about 5 minutes.
 
 ### Setting up Sagemaker
 
